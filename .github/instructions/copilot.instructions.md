@@ -1,0 +1,23 @@
+---
+applyTo: '**'
+---
+Provide project context and coding guidelines that AI should follow when generating code, answering questions, or reviewing changes.
+- do not write unnecessary comments in the code
+- follow existing code style and conventions
+- ensure type safety and proper error handling
+- do not add icons or emojis in the code
+- do not include explanations or justifications in the code unless explicitly asked
+- prioritize code readability and maintainability
+- use modern JavaScript/TypeScript features where appropriate
+- it is preferred to use async/await for asynchronous code
+- prefer generic utility functions instead of repetitive code blocks where possible (ex: validation generations or api generation based schema, or core functionality ex create connection and create provider can be made generic)
+- do not write unnecessary tests or boilerplate code unless explicitly asked
+- make sure changes are relevant to the context of the file and project
+- make sure to follow best practices for security, performance, and scalability
+- make sure to follow project-specific patterns and architectures
+- if possible, leverage existing libraries and utilities used in the project
+- write modular and reusable code
+- avoid premature optimization
+- config driven approach is preferred for features that might need to be toggled or adjusted in the future
+- DO NOT WRITE guide / example on how to use libraries unless explicitly asked
+- DO NOT WRITE documentation or READMEs unless explicitly asked
