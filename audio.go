@@ -98,6 +98,14 @@ func (ac *AudioCapture) ReadOpusFrame() ([]byte, error) {
 	return opusData[:n], nil
 }
 
+func (ac *AudioCapture) GetPCMLevel(pcm []int16) float64 {
+	var sum float64
+	for _, sample := range pcm {
+		sum += float64(sample) * float64(sample)
+	}
+	return sum / float64(len(pcm))
+}
+
 func (ac *AudioCapture) Stop() {
 	if ac.cmd != nil && ac.cmd.Process != nil {
 		ac.cmd.Process.Kill()

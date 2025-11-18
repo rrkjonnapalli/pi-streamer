@@ -69,6 +69,9 @@ func StartPublisher(cfg Config) error {
 	sequencer := rtp.NewRandomSequencer()
 	frameCount := uint64(0)
 	lastLog := time.Now()
+	lastDebugLog := time.Now()
+	var totalBytes uint64
+	var minSize, maxSize int = 999999, 0
 
 	for {
 		select {
@@ -93,6 +96,19 @@ func StartPublisher(cfg Config) error {
 
 		frameCount++
 		sequencer.NextSequenceNumber()
+		totalBytes += uint64(len(opusData))
+		if len(opusData) < minSize {
+			minSize = len(opusData)
+		}
+		if len(opusData) > maxSize {
+			maxSize = len(opusData)
+		}
+
+		if time.Since(lastDebugLog) > 10*time.Second {
+			avgSize := float64(totalBytes) / float64(frameCount)
+			log.Printf("audio stats: frames=%d, avg_size=%.1f bytes, min=%d, max=%d", frameCount, avgSize, minSize, maxSize)
+			lastDebugLog = time.Now()
+		}
 
 		if time.Since(lastLog) > 5*time.Minute {
 			log.Printf("streaming active: %d frames sent (%.1f hours)", frameCount, float64(frameCount)*0.02/3600)
