@@ -1,10 +1,10 @@
 package main
 
 import (
-	"io"
+	"fmt"
 	"log"
-	"os/exec"
 
+	"github.com/gordonklaus/portaudio"
 	"gopkg.in/hraban/opus.v2"
 )
 
@@ -16,9 +16,9 @@ const (
 )
 
 type AudioCapture struct {
-	cmd     *exec.Cmd
-	stdout  io.ReadCloser
+	stream  *portaudio.Stream
 	encoder *opus.Encoder
+	buffer  []int16
 	cfg     Config
 }
 
@@ -28,74 +28,75 @@ func NewAudioCapture(cfg Config) (*AudioCapture, error) {
 		return nil, err
 	}
 	encoder.SetBitrate(cfg.OpusBitrate)
+	encoder.SetDTX(false)
+	encoder.SetPacketLossPerc(0)
+
+	if err := portaudio.Initialize(); err != nil {
+		return nil, fmt.Errorf("failed to initialize portaudio: %w", err)
+	}
+
+	log.Printf("Opus encoder: bitrate=%d, DTX=disabled, VBR=enabled", cfg.OpusBitrate)
 
 	return &AudioCapture{
 		encoder: encoder,
+		buffer:  make([]int16, FrameSize),
 		cfg:     cfg,
 	}, nil
 }
 
 func (ac *AudioCapture) Start() error {
-	ac.cmd = exec.Command("arecord",
-		"-D", ac.cfg.ALSADevice,
-		"-f", "S16_LE",
-		"-c", "1",
-		"-r", "48000",
-		"-t", "raw",
-	)
-
-	stdout, err := ac.cmd.StdoutPipe()
+	var err error
+	ac.stream, err = portaudio.OpenDefaultStream(Channels, 0, SampleRate, FrameSize, ac.buffer)
 	if err != nil {
-		return err
-	}
-	ac.stdout = stdout
-
-	stderr, err := ac.cmd.StderrPipe()
-	if err != nil {
-		return err
+		return fmt.Errorf("failed to open audio stream: %w", err)
 	}
 
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, err := stderr.Read(buf)
-			if n > 0 {
-				log.Printf("arecord: %s", string(buf[:n]))
-			}
-			if err != nil {
-				break
-			}
-		}
-	}()
-
-	if err := ac.cmd.Start(); err != nil {
-		return err
+	if err := ac.stream.Start(); err != nil {
+		return fmt.Errorf("failed to start audio stream: %w", err)
 	}
 
-	log.Println("audio capture started")
+	log.Println("audio capture started (PortAudio)")
 	return nil
 }
 
 func (ac *AudioCapture) ReadOpusFrame() ([]byte, error) {
-	pcm := make([]int16, FrameSize)
-	pcmBytes := make([]byte, FrameSize*2)
-
-	_, err := io.ReadFull(ac.stdout, pcmBytes)
-	if err != nil {
-		return nil, err
-	}
-
-	for i := 0; i < FrameSize; i++ {
-		pcm[i] = int16(pcmBytes[i*2]) | int16(pcmBytes[i*2+1])<<8
+	if err := ac.stream.Read(); err != nil {
+		return nil, fmt.Errorf("audio read failed: %w", err)
 	}
 
 	opusData := make([]byte, MaxPacket)
-	n, err := ac.encoder.Encode(pcm, opusData)
+	n, err := ac.encoder.Encode(ac.buffer, opusData)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opus encode failed: %w", err)
+	}
+
+	if n < 20 {
+		log.Printf("Very small Opus packet: %d bytes (buffer has data: first=%d, max=%d)",
+			n, ac.buffer[0], maxAbs(ac.buffer))
 	}
 
 	return opusData[:n], nil
+}
+
+func maxAbs(samples []int16) int16 {
+	var max int16
+	for _, s := range samples {
+		if s < 0 {
+			s = -s
+		}
+		if s > max {
+			max = s
+		}
+	}
+	return max
+}
+
+func (ac *AudioCapture) GetBufferRMS() float64 {
+	var sum float64
+	for _, sample := range ac.buffer {
+		sum += float64(sample) * float64(sample)
+	}
+	return sum / float64(len(ac.buffer))
 }
 
 func (ac *AudioCapture) GetPCMLevel(pcm []int16) float64 {
@@ -107,10 +108,9 @@ func (ac *AudioCapture) GetPCMLevel(pcm []int16) float64 {
 }
 
 func (ac *AudioCapture) Stop() {
-	if ac.cmd != nil && ac.cmd.Process != nil {
-		ac.cmd.Process.Kill()
+	if ac.stream != nil {
+		ac.stream.Stop()
+		ac.stream.Close()
 	}
-	if ac.stdout != nil {
-		ac.stdout.Close()
-	}
+	portaudio.Terminate()
 }

@@ -21,7 +21,7 @@ func main() {
 		log.Fatal("missing required environment variables")
 	}
 
-	log.Printf("starting pi-streamer: room=%s, device=%s, bitrate=%d", cfg.RoomName, cfg.ALSADevice, cfg.OpusBitrate)
+	log.Printf("starting pi-streamer: room=%s, bitrate=%d", cfg.RoomName, cfg.OpusBitrate)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

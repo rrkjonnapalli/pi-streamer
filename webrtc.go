@@ -71,7 +71,9 @@ func StartPublisher(cfg Config) error {
 	lastLog := time.Now()
 	lastDebugLog := time.Now()
 	var totalBytes uint64
+	var totalRMS float64
 	var minSize, maxSize int = 999999, 0
+	var minRMS, maxRMS float64 = 999999, 0
 
 	for {
 		select {
@@ -94,19 +96,37 @@ func StartPublisher(cfg Config) error {
 			return err
 		}
 
+		rms := capture.GetBufferRMS()
 		frameCount++
 		sequencer.NextSequenceNumber()
 		totalBytes += uint64(len(opusData))
+		totalRMS += rms
 		if len(opusData) < minSize {
 			minSize = len(opusData)
 		}
 		if len(opusData) > maxSize {
 			maxSize = len(opusData)
 		}
+		if rms < minRMS {
+			minRMS = rms
+		}
+		if rms > maxRMS {
+			maxRMS = rms
+		}
 
 		if time.Since(lastDebugLog) > 10*time.Second {
 			avgSize := float64(totalBytes) / float64(frameCount)
-			log.Printf("audio stats: frames=%d, avg_size=%.1f bytes, min=%d, max=%d", frameCount, avgSize, minSize, maxSize)
+			avgRMS := totalRMS / float64(frameCount)
+			status := "SILENCE"
+			if avgRMS > 100 {
+				status = "LOUD"
+			} else if avgRMS > 50 {
+				status = "SPEAKING"
+			} else if avgRMS > 10 {
+				status = "DETECTED"
+			}
+			log.Printf("%s - frames=%d, avg_size=%.1f bytes (min=%d, max=%d), avg_rms=%.0f (min=%.0f, max=%.0f)",
+				status, frameCount, avgSize, minSize, maxSize, avgRMS, minRMS, maxRMS)
 			lastDebugLog = time.Now()
 		}
 
